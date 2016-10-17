@@ -13,8 +13,6 @@ public class LockFreeExecutor {
 	private final int workers;
 	private final int numPerWorker;
 	private final Runnable runnable;
-	private final Object monitor = new Object();
-	private final CountDownLatch latch;
 
 	/**
 	 * Instantiates a new lock free executor.
@@ -30,7 +28,6 @@ public class LockFreeExecutor {
 		this.workers = workers;
 		this.runnable = runnable;
 		this.numPerWorker = numPerWorker;
-		this.latch = new CountDownLatch(workers);
 	}
 
 	/**
