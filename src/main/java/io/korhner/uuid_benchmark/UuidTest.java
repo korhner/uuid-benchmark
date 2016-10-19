@@ -3,6 +3,8 @@ package io.korhner.uuid_benchmark;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -28,14 +30,12 @@ public final class UuidTest {
 		br.readLine();
 	}
 
-	private static void measure(final ThreadLocalGenerator<?> uuid, final int numTimes, final int workers,
-			final boolean interactive, final boolean trackCollisions) throws IOException, InterruptedException {
-		if (interactive) {
-			waitForEnter(String.format("Press enter to continue test %s", uuid.getClass().getSimpleName()));
-		}
+	private static TestResult measure(final ThreadLocalGenerator<?> uuid, final int uuidsPerWorker, final int workers,
+			final boolean trackCollisions) throws IOException, InterruptedException {
+
 		final Set<String> collisionSet = Sets.newConcurrentHashSet();
 		final AtomicInteger collisionNum = new AtomicInteger();
-		LockFreeExecutor executor = new LockFreeExecutor(workers, numTimes, new Runnable() {
+		LockFreeExecutor executor = new LockFreeExecutor(workers, uuidsPerWorker, new Runnable() {
 
 			@Override
 			public void run() {
@@ -48,14 +48,26 @@ public final class UuidTest {
 			}
 		});
 		long millis = executor.executeTimed();
-		System.out.println(String.format(
-				"Generator %s took %d ms to generate %d uuids with %d workers. Uuids in set: %d. Collisions: %d",
-				uuid.getClass().getSimpleName(), millis, numTimes, workers, collisionSet.size(), collisionNum.get()));
+		return new TestResult(uuid.getClass().getSimpleName(), millis, uuidsPerWorker, workers, collisionNum.get());
 	}
 
 	private static List<ThreadLocalGenerator<?>> createGenerators() {
 		return ImmutableList.of(new JavaUuid(), new JavaUuid(), new JugRandom(), new JugThreadLocalRandom(),
 				new JugTimeBased());
+	}
+
+	public static void performTest(List<ThreadLocalGenerator<?>> generators, int uuidsPerWorker, int workers,
+			boolean trackCollisions) throws IOException, InterruptedException {
+		System.out.println(String.format("Running test with %d uuids per worker on %d workers. Track collisions: %s",
+				uuidsPerWorker, workers, trackCollisions));
+
+		List<TestResult> results = new ArrayList<TestResult>();
+		for (ThreadLocalGenerator<?> uuid : generators) {
+			results.add(measure(uuid, uuidsPerWorker, workers, trackCollisions));
+		}
+		Collections.sort(results);
+		results.stream().forEach(x -> System.out.println(x));
+		System.out.println("Test ended.\n");
 	}
 
 	/**
@@ -73,17 +85,15 @@ public final class UuidTest {
 
 		waitForEnter("Press enter to start test");
 
-		// a test without collision tracking, best performance
-		System.out.println("Without collisions");
-		for (ThreadLocalGenerator<?> uuid : createGenerators()) {
-			measure(uuid, 100000, 10, true, false);
-		}
-
 		// a test with collision tracking, 'correctness'
-		System.out.println("With collisions");
-		for (ThreadLocalGenerator<?> uuid : createGenerators()) {
-			measure(uuid, 100000, 10, true, true);
-		}
+		performTest(createGenerators(), 100000, 15, true);
+
+		// a test without collision tracking, concurrent
+		performTest(createGenerators(), 100000, 15, false);
+
+		// a test without collision tracking, single thread
+		performTest(createGenerators(), 1000000, 1, false);
+
 	}
 
 }
